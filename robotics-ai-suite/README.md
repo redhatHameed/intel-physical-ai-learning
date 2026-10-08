@@ -60,23 +60,23 @@ robotics-ai-suite/
 
 ## 🗓️ Learning Path
 
-### ✅ Phase 1: Foundation (Week 1-2)
+### ✅ Phase 1: Foundation
 - [x] Understand technology stack
 - [ ] Set up development environment
 - [ ] Run documentation site locally
 
-### ⏳ Phase 2: Simple Demos (Week 3-4)
+### ⏳ Phase 2: Simple Demos
 - [ ] Object Detection demo
 - [ ] SLAM/Navigation
 - [ ] Simulation experiments
 
-### ⏳ Phase 3: AI Robotics (Week 5-8)
+### ⏳ Phase 3: AI Robotics
 - [ ] LLM Robotics Demo
 - [ ] Diffusion Policy
 - [ ] VLA model (Pi0.5)
 - [ ] Benchmarking
 
-### ⏳ Phase 4: Deep Experimentation (Week 9+)
+### ⏳ Phase 4: Deep Experimentation
 - [ ] Model comparisons
 - [ ] Optimization experiments
 - [ ] Platform comparison (KServe/vLLM-Omni)
