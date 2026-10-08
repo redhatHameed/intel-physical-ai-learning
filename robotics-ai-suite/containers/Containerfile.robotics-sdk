@@ -1,0 +1,95 @@
+# Intel Robotics AI Suite in a container.
+#
+# Package names/versions verified against the live Intel APT repos on 2026-10-08.
+# MUST be built and run on x86_64 — amrdocs.intel.com serves only i386/amd64.
+#
+#   oc new-build --binary --strategy=docker --name robotics-sdk
+#   oc start-build robotics-sdk --from-dir=. --follow
+#
+# NOTE: Intel's step-by-step doc says `apt install openvino` and pins a package
+# called `openvino-libraries-dev`. Neither package exists in the ubuntu24 repo.
+# Only versioned components are published, and libopenvino pulls NO plugins,
+# so the CPU plugin and IR frontend must be named explicitly or inference fails
+# at runtime with "device CPU not found".
+
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ARG OV_VERSION=2025.3.0
+ARG OV_FULL=2025.3.0.19807
+SHELL ["/bin/bash", "-c"]
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ca-certificates curl wget gnupg lsb-release software-properties-common \
+      locales debconf-utils \
+    && locale-gen en_US.UTF-8 \
+    && rm -rf /var/lib/apt/lists/*
+ENV LANG=en_US.UTF-8
+
+# --- repos -------------------------------------------------------------------
+
+# ROS 2 Jazzy
+RUN curl -sSL https://raw.githubusercontent.com/ros/rosdistro/master/ros.key \
+      -o /usr/share/keyrings/ros-archive-keyring.gpg \
+ && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/ros-archive-keyring.gpg] http://packages.ros.org/ros2/ubuntu noble main" \
+      > /etc/apt/sources.list.d/ros2.list
+
+# Robotics AI Suite (167 packages)
+RUN wget -qO- https://amrdocs.intel.com/repos/gpg-keys/GPG-PUB-KEY-INTEL-AMR.gpg \
+      > /usr/share/keyrings/amr-archive-keyring.gpg \
+ && echo "deb [signed-by=/usr/share/keyrings/amr-archive-keyring.gpg] https://amrdocs.intel.com/repos/noble amr main" \
+      > /etc/apt/sources.list.d/amr.list \
+ && printf 'Package: *\nPin: origin amrdocs.intel.com\nPin-Priority: 1001\n' \
+      > /etc/apt/preferences.d/amr
+
+# OpenVINO 2025 (same Intel signing key also covers oneAPI)
+RUN wget -qO- https://apt.repos.intel.com/intel-gpg-keys/GPG-PUB-KEY-INTEL-SW-PRODUCTS.PUB | gpg --dearmor \
+      > /usr/share/keyrings/intel-sw-archive-keyring.gpg \
+ && echo "deb [signed-by=/usr/share/keyrings/intel-sw-archive-keyring.gpg] https://apt.repos.intel.com/openvino/2025 ubuntu24 main" \
+      > /etc/apt/sources.list.d/intel-openvino-2025.list
+
+# --- ROS 2 -------------------------------------------------------------------
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      ros-jazzy-ros-base python3-colcon-common-extensions \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- OpenVINO ----------------------------------------------------------------
+# Plugins and frontends are separate packages; libopenvino alone is inert.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      libopenvino-${OV_VERSION}=${OV_FULL} \
+      libopenvino-intel-cpu-plugin-${OV_VERSION}=${OV_FULL} \
+      libopenvino-intel-gpu-plugin-${OV_VERSION}=${OV_FULL} \
+      libopenvino-auto-plugin-${OV_VERSION}=${OV_FULL} \
+      libopenvino-hetero-plugin-${OV_VERSION}=${OV_FULL} \
+      libopenvino-ir-frontend-${OV_VERSION}=${OV_FULL} \
+      libopenvino-onnx-frontend-${OV_VERSION}=${OV_FULL} \
+      libopenvino-pytorch-frontend-${OV_VERSION}=${OV_FULL} \
+      python3-openvino-${OV_VERSION}=${OV_FULL} \
+      libze1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# --- ROS 2 <-> OpenVINO bridge -----------------------------------------------
+# Prompts for IR model download during postinst; preseed it.
+RUN echo 'ros-jazzy-openvino-node ros-jazzy-openvino-node/install_models boolean true' \
+      | debconf-set-selections \
+ && apt-get update && apt-get install -y --no-install-recommends \
+      ros-jazzy-openvino-node \
+ && rm -rf /var/lib/apt/lists/*
+
+# --- Physical AI pipelines ---------------------------------------------------
+# The packaged form of src/pipelines/*. Trim to what you need.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+      pi05-ov rdt-ov diffusion-policy-ov idp3-ov act-ov llm-robotics \
+    && rm -rf /var/lib/apt/lists/*
+
+# Deliberately NOT installed — need host kernel modules or devices:
+#   intel-level-zero-npu, intel-driver-compiler-npu   NPU driver, wants /dev/accel
+#   librealsense2-dkms                                kernel module + USB camera
+#   ros-jazzy-robotics-sdk                            metapackage, pulls RealSense demos
+# Add ros-jazzy-collab-slam-avx2 / its-planner / wandering individually if wanted.
+
+RUN echo 'source /opt/ros/jazzy/setup.bash' >> /etc/bash.bashrc
+
+WORKDIR /workspace
+CMD ["/bin/bash"]

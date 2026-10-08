@@ -1,100 +1,62 @@
-# Intel Robotics AI Suite - Learning Path
+# Intel Robotics AI Suite — Learning Path
 
-**Part of**: [Intel Learning Hub](../)  
-**Date Started**: 2026-10-08  
-**Owner**: @ahameed  
-**Status**: 🟢 Active
+Part of the [Intel Physical AI Learning Hub](../). Owner: @ahameed. Started 2026-10-08.
 
-**Source Repository**: https://github.com/open-edge-platform/robotics-ai-suite  
-**Purpose**: Explore Intel's robotics AI suite for Physical AI platform integration
+Upstream: https://github.com/open-edge-platform/robotics-ai-suite
+(also vendored at `edge-ai-suites/robotics-ai-suite` in the umbrella repo — same content)
 
----
+**Why:** compare Intel's model-serving and optimization approach against our
+KServe/vLLM-Omni platform, and find anything worth adopting.
 
-## 📘 About This Learning Path
+## Contents
 
-Intel Robotics AI Suite is a comprehensive platform for building AI-powered robots with:
-- ROS 2 middleware integration
-- OpenVINO-optimized AI models
-- Physical AI (VLA, Diffusion Policies)
-- Vision, navigation, and manipulation stacks
+| | |
+|---|---|
+| [INSTALLATION_GUIDE.md](INSTALLATION_GUIDE.md) | What the suite actually is, how to install it, two bugs in Intel's docs |
+| [containers/](containers/) | `Containerfile.robotics-sdk` — buildable suite image for OpenShift |
+| [technologies/](technologies/) | ROS 2, OpenVINO, VLA, diffusion policies, LLM robotics, CV |
+| [demos/](demos/) | Hands-on experiment logs |
+| [benchmarks/](benchmarks/) | Performance data |
+| [comparisons/](comparisons/) | Intel vs KServe/vLLM-Omni |
 
-**Why we're learning this:**
-Compare Intel's approach to our KServe/vLLM-Omni platform and identify integration opportunities.
+## What we've established
 
----
+- The suite is **167 Debian packages** from `amrdocs.intel.com`, not a monolithic
+  OS image. The "installer" adds four APT repos and runs `apt install`.
+- Repo architectures are **`i386 amd64`** — no arm64 build exists, so Apple Silicon
+  is out and OpenShift x86 nodes are in.
+- No prebuilt suite container is published anywhere (checked Docker Hub `openvino/`
+  and `intel/` orgs, ~500 repos; nothing on GHCR). We build our own.
+- The `src/pipelines/*` source trees ship as packages: `pi05-ov`, `rdt-ov`,
+  `diffusion-policy-ov`, `idp3-ov`, `act-ov`, `llm-robotics`.
+- In a container you get the full software stack at **CPU-only inference**. NPU
+  needs `/dev/accel` + host driver; iGPU needs `/dev/dri` + device plugin;
+  RealSense needs a DKMS kernel module.
 
-## 📁 Folder Structure
+## Status
 
+- [x] Technology stack mapped
+- [x] Docs site building locally (needs `brew install enchant`; `make serve` fails
+      on macOS because `flock` is missing — run the `npm ci && npm run build &&
+      npm run serve` steps from `docs/website/` directly)
+- [x] Install path verified against the live repos
+- [ ] Build the container on OpenShift
+- [ ] Run a packaged pipeline, trace how it loads models
+- [ ] Write up the KServe/vLLM comparison
+
+## Next
+
+```bash
+oc new-project robotics-learning
+cd containers/
+oc new-build --binary --strategy=docker --name robotics-sdk
+oc start-build robotics-sdk --from-dir=. --follow
 ```
-robotics-ai-suite/
-├── README.md (this file)
-├── technologies/          # Technology deep-dives
-│   ├── ros2.md
-│   ├── openvino.md
-│   ├── vla-models.md
-│   ├── diffusion-policies.md
-│   ├── llm-robotics.md
-│   └── computer-vision.md
-├── demos/                 # Hands-on demo experiments
-│   ├── object-detection.md
-│   ├── llm-robotics-demo.md
-│   ├── diffusion-policy.md
-│   └── vla-pi05.md
-├── benchmarks/            # Performance testing notes
-│   └── performance-analysis.md
-└── comparisons/           # Platform comparisons
-    └── kserve-vllm-comparison.md
+
+Then confirm the stack is live:
+
+```bash
+source /opt/ros/jazzy/setup.bash
+python3 -c "import openvino; print(openvino.Core().available_devices)"   # expect ['CPU']
+ros2 pkg list | grep openvino
 ```
-
----
-
-## 🎯 Learning Goals
-
-1. **Understand model serving architecture** - How they serve VLA models, diffusion policies
-2. **ROS 2 integration patterns** - Bridges, message formats, latency considerations
-3. **Hardware optimization** - OpenVINO tooling, quantization, optimization
-4. **Deployment patterns** - Container structure, dependencies, GPU allocation
-5. **Benchmarking methodology** - What metrics matter for Physical AI
-
----
-
-## 🗓️ Learning Path
-
-### ✅ Phase 1: Foundation
-- [x] Understand technology stack
-- [ ] Set up development environment
-- [ ] Run documentation site locally
-
-### ⏳ Phase 2: Simple Demos
-- [ ] Object Detection demo
-- [ ] SLAM/Navigation
-- [ ] Simulation experiments
-
-### ⏳ Phase 3: AI Robotics
-- [ ] LLM Robotics Demo
-- [ ] Diffusion Policy
-- [ ] VLA model (Pi0.5)
-- [ ] Benchmarking
-
-### ⏳ Phase 4: Deep Experimentation
-- [ ] Model comparisons
-- [ ] Optimization experiments
-- [ ] Platform comparison (KServe/vLLM-Omni)
-
----
-
-## 📝 Quick Links
-
-- [Technology Stack Overview](technologies/)
-- [Demo Experiments](demos/)
-- [Performance Benchmarks](benchmarks/)
-- [Platform Comparisons](comparisons/)
-
----
-
-## 🔗 Resources
-
-- **Main Documentation**: Run `make serve` → http://localhost:3000
-- **Intel Robotics Portal**: https://developer.robotics.intel.com/
-- **ROS 2 Docs**: https://docs.ros.org/en/humble/
-- **OpenVINO Docs**: https://docs.openvino.ai/
