@@ -45,7 +45,7 @@ KServe/vLLM-Omni platform, and find anything worth adopting.
       on macOS because `flock` is missing — run the `npm ci && npm run build &&
       npm run serve` steps from `docs/website/` directly)
 - [x] Install path verified against the live repos
-- [ ] Build the container on OpenShift
+- [x] Built and running on OpenShift — see [TESTING.md](TESTING.md)
 - [ ] Run a packaged pipeline, trace how it loads models
 - [ ] Write up the KServe/vLLM comparison
 
