@@ -27,11 +27,16 @@ KServe/vLLM-Omni platform, and find anything worth adopting.
   is out and OpenShift x86 nodes are in.
 - No prebuilt suite container is published anywhere (checked Docker Hub `openvino/`
   and `intel/` orgs, ~500 repos; nothing on GHCR). We build our own.
-- The `src/pipelines/*` source trees ship as packages: `pi05-ov`, `rdt-ov`,
-  `diffusion-policy-ov`, `idp3-ov`, `act-ov`, `llm-robotics`.
-- In a container you get the full software stack at **CPU-only inference**. NPU
-  needs `/dev/accel` + host driver; iGPU needs `/dev/dri` + device plugin;
-  RealSense needs a DKMS kernel module.
+- The pipeline packages (`pi05-ov`, `rdt-ov`, …) ship **only patch files**. Each
+  pipeline is an upstream project (`huggingface/lerobot`, `tonyzhaozh/act`,
+  `ORB_SLAM3`) plus an Intel patch set. Running one = clone upstream, `git am`,
+  build. Intel's whole VLA contribution is ~7000 lines of diff against lerobot.
+- **Local on Apple Silicon works** (tested M3 Pro): amd64 containers run under
+  Colima, OpenVINO 2025.3.0 installs, `available_devices` → `['CPU']`. But it's
+  QEMU TCG, so oneDNN falls back to reference kernels — functional, not fast,
+  and useless for timing. Rosetta (`colima start --vz-rosetta`) is much quicker.
+- NPU needs `/dev/accel` + host driver; iGPU needs `/dev/dri` + device plugin;
+  RealSense needs a DKMS kernel module. None of those work in a container.
 
 ## Status
 

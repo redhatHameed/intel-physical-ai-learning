@@ -131,11 +131,93 @@ the NPU driver (step 7 of the step-by-step guide). This is the only configuratio
 where `openvino.Core().available_devices` reports `['CPU', 'GPU', 'NPU']` and the
 published benchmarks reproduce.
 
-### Not an option: Apple Silicon
+### D. Apple Silicon under emulation — works, tested
 
-`Architectures: i386 amd64`. No arm64 build exists. Docker's x86 emulation will
-install the packages but OpenVINO's x86 kernels under QEMU are slow enough to be
-useless for anything but a smoke test.
+No arm64 build exists, but amd64 containers run fine under Colima and OpenVINO
+initializes. Tested on an M3 Pro, 2026-10-08:
+
+```
+$ docker run --rm --platform linux/amd64 ubuntu:24.04 uname -m
+x86_64
+
+# after adding the OpenVINO repo and installing the versioned packages:
+version: 2025.3.0-19807-44526285f24-releases/2025/3
+devices: ['CPU']
+cpu:     QEMU TCG CPU version 2.5+
+```
+
+`pi05-ov`, `rdt-ov` and `llm-robotics` also install cleanly from the Intel repo.
+
+The caveat is `QEMU TCG`: pure software translation, advertising a minimal CPU
+model. oneDNN sees no AVX2/AVX-512 and falls back to reference kernels, so it runs
+but slowly, and any timing you collect is meaningless as a proxy for Intel silicon.
+
+Good for install mechanics, reading how pipelines load models, and iterating on the
+Containerfile without a cluster round-trip. Use OpenShift the moment you want numbers.
+
+Colima defaults to QEMU (`binfmt_misc` shows `qemu-x86_64`). Rosetta is much faster:
+
+```bash
+colima stop && colima start --vz-rosetta
+```
+
+## What the packages actually contain
+
+Two different shapes, and it matters.
+
+**`llm-robotics` ships real source.** The complete Python app, immediately runnable:
+
+```
+/opt/llm-robotics/LLM/llm_bridge.py          # OVModelForCausalLM, Phi-4 loading
+/opt/llm-robotics/LLM/executor.py
+/opt/llm-robotics/LLM/main.py
+/opt/llm-robotics/LLM/primitives.py
+/opt/llm-robotics/LLM/utils/{prompt,funasr_client,tts_client,mobilesam_helper}.py
+/opt/llm-robotics/LLM/requirement.txt
+/opt/llm-robotics/asr-openvino-demo/models/paraformer_bin.py
+```
+
+That makes it the best first thing to run locally — no upstream clone, no patching.
+
+**The VLA packages ship only patches.** `pi05-ov` installs exactly this:
+
+```
+/opt/pi05-ov/0001-Feat-Add-environment-requirements.patch
+/opt/pi05-ov/0002-Feat-Add-script-for-openvino-conversion.patch
+/opt/pi05-ov/0003-Feat-Enable-ov-inference-in-pi05-policy.patch
+/opt/pi05-ov/0004-Feat-Optimize-implementation-of-openvino-conversion.patch
+/opt/pi05-ov/0005-Feat-Add-ALOHA-pipeline-example-for-sim-and-real.patch
+/opt/pi05-ov/README.md
+```
+
+Patches, nothing else. The pipelines are **upstream projects plus an Intel patch set**,
+which matches `.gitmodules` in the source repo:
+
+| Pipeline | Upstream |
+|---|---|
+| `pi05-rtc-ov` | `huggingface/lerobot` |
+| `act-sample` | `tonyzhaozh/act` |
+| `orb-slam3-sample` | `UZ-SLAMLab/ORB_SLAM3` |
+| `mpc-demo` | `leggedrobotics/ocs2` |
+
+So running a VLA pipeline is: clone upstream → `git am` Intel's patches → build.
+The package README spells out the exact sequence:
+
+```bash
+git clone https://github.com/huggingface/lerobot && cd lerobot
+git am /opt/pi05-ov/0001-Feat-Add-environment-requirements.patch
+git am /opt/pi05-ov/0002-Feat-Add-script-for-openvino-conversion.patch
+git am /opt/pi05-ov/0003-Feat-Enable-ov-inference-in-pi05-policy.patch
+git am /opt/pi05-ov/0004-Feat-Optimize-implementation-of-openvino-conversion.patch
+git am /opt/pi05-ov/0005-Feat-Add-ALOHA-pipeline-example-for-sim-and-real.patch
+git am /opt/pi05-ov/0001-Fix-Bugs-fix.patch
+```
+
+**This is the most useful thing for our comparison.** Intel's entire VLA contribution
+is ~7000 lines of patch against lerobot. `0003-Feat-Enable-ov-inference-in-pi05-policy`
+touches `src/lerobot/policies/pi05/modeling_pi05.py` and `configuration_pi05.py` —
+that diff *is* the answer to "how do you move a VLA model from PyTorch to OpenVINO,"
+in reviewable form, no install required. Read the patches before building anything.
 
 ## Suggested path
 
