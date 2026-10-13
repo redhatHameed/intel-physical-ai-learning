@@ -1,0 +1,66 @@
+# THE DEMO. Runs Intel's own llm_bridge.LLMBridge — unmodified except GPU->CPU —
+# turning a spoken-style instruction into robot control code via Phi-4 INT8 on
+# OpenVINO. ~1 min: 35s model load, then ~15s per command.
+#
+#   oc apply -f 04-llm-robotics-demo.yaml && oc logs -f job/llm-robotics-demo
+#
+# Expected output:
+#   #code start
+#   prepare_state()
+#   target_pose = get_pick_pose('red apple')
+#   move(target_pose)
+#   suck()
+#   target_pose = get_place_pose('green box')
+#   move(target_pose)
+#   release()
+#   prepare_state()
+#   #end
+#
+# Requires 03-export-phi4 to have completed.
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: llm-robotics-demo
+  labels: {app: robotics-sdk}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: demo
+        image: robotics-sdk:latest
+        command: ["bash","-lc"]
+        args:
+          - |
+            set -eu
+            export HOME=/models HF_HOME=/models/hf
+            . /models/venv/bin/activate
+            mkdir -p /tmp/run && cp -r /opt/llm-robotics/LLM/* /tmp/run/ && cd /tmp/run
+
+            # ONLY edit to Intel's source. There is no Intel GPU on this cluster;
+            # OpenVINO's "GPU" plugin targets Intel iGPU/Arc via Level Zero, never NVIDIA.
+            sed -i "s/device='GPU'/device='CPU'/" llm_bridge.py
+
+            python - <<'PY'
+            import time, llm_bridge
+            t0 = time.time(); bridge = llm_bridge.LLMBridge()
+            print(f"\nmodel load: {time.time()-t0:.1f}s\n", flush=True)
+            for cmd in [
+                "Pick up the red apple and place it into the green box, then return the robot to its default position.",
+                "Move the blue cup to the tray",
+            ]:
+                print("="*70, flush=True); print("COMMAND:", cmd, flush=True)
+                t = time.time(); out = bridge.generate_prim_code(cmd)
+                print(f"--- {time.time()-t:.1f}s ---", flush=True); print(out, flush=True)
+            PY
+        # NOTE: cpu request must stay <= 2. Nodes are 8-core and already loaded;
+        # a request of 6 sits Pending forever with "Insufficient cpu".
+        resources:
+          requests: {cpu: "2", memory: "10Gi"}
+          limits:   {cpu: "7", memory: "22Gi"}
+        volumeMounts: [{name: m, mountPath: /models}]
+      volumes:
+      - name: m
+        persistentVolumeClaim: {claimName: models}

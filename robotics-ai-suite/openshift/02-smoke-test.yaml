@@ -1,0 +1,41 @@
+# Smoke test — proves OpenVINO sees a real Intel CPU and ROS 2 is wired up.
+# Runs in ~30s. Use this first; if it fails, nothing else will work.
+#
+#   oc apply -f 02-smoke-test.yaml && oc logs -f job/smoke-test
+#
+# Expected:
+#   devices  : ['CPU']
+#   CPU      : Intel(R) Xeon(R) Platinum 8375C CPU @ 2.90GHz
+#   ros2 openvino packages: 5
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: smoke-test
+  labels: {app: robotics-sdk}
+spec:
+  backoffLimit: 0
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: smoke
+        image: robotics-sdk:latest
+        command: ["bash","-lc"]
+        args:
+          - |
+            python3 -c "
+            import openvino
+            c = openvino.Core()
+            print('openvino :', openvino.__version__)
+            print('devices  :', c.available_devices)
+            for d in c.available_devices:
+                print('CPU      :', c.get_property(d,'FULL_DEVICE_NAME'))
+            "
+            source /opt/ros/jazzy/setup.bash
+            echo "ros2 packages        : $(ros2 pkg list | wc -l)"
+            echo "ros2 openvino packages: $(ros2 pkg list | grep -c openvino)"
+            echo "suite packages       : $(ls /opt | grep -v ros | tr '\n' ' ')"
+        resources:
+          requests: {cpu: "500m", memory: "2Gi"}
+          limits:   {cpu: "2", memory: "4Gi"}

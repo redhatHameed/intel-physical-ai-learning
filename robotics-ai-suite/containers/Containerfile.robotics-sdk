@@ -21,7 +21,8 @@ SHELL ["/bin/bash", "-c"]
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
       ca-certificates curl wget gnupg lsb-release software-properties-common \
-      locales debconf-utils \
+      locales debconf-utils git \
+      python3-pip python3-venv python3-dev build-essential \
     && locale-gen en_US.UTF-8 \
     && rm -rf /var/lib/apt/lists/*
 ENV LANG=en_US.UTF-8

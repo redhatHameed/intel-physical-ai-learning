@@ -1,0 +1,49 @@
+# Intel Robotics AI Suite on OpenShift — storage + image build
+#
+#   oc new-project robotics-learning
+#   oc apply -f 01-storage-and-build.yaml
+#   cd ../containers && mkdir -p /tmp/rbuild && cp Containerfile.robotics-sdk /tmp/rbuild/Dockerfile
+#   cd /tmp/rbuild && oc start-build robotics-sdk --from-dir=. --follow
+#
+# Build takes ~7 min on an m5.2xlarge. Produces a ~6 GB image.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: models
+  labels: {app: robotics-sdk}
+spec:
+  accessModes: [ReadWriteOnce]
+  storageClassName: gp3          # cluster default; change to taste
+  resources:
+    requests:
+      storage: 60Gi              # Phi-4 INT8 ~4GB + venv ~6GB + pi0.5 ckpt ~12GB
+---
+apiVersion: image.openshift.io/v1
+kind: ImageStream
+metadata:
+  name: robotics-sdk
+  labels: {app: robotics-sdk}
+spec:
+  lookupPolicy: {local: true}
+---
+apiVersion: build.openshift.io/v1
+kind: BuildConfig
+metadata:
+  name: robotics-sdk
+  labels: {app: robotics-sdk}
+spec:
+  source:
+    type: Binary
+    binary: {}
+  strategy:
+    type: Docker
+    dockerStrategy:
+      dockerfilePath: Dockerfile
+  output:
+    to:
+      kind: ImageStreamTag
+      name: robotics-sdk:latest
+  resources:
+    requests: {cpu: "2", memory: "4Gi"}
+    limits:   {cpu: "4", memory: "8Gi"}

@@ -1,0 +1,64 @@
+# One-time: export Phi-4-mini to OpenVINO INT8 onto the PVC, and build the venv
+# that later jobs reuse. ~10 min (8GB download + quantization). Result ~4GB.
+#
+#   oc apply -f 03-export-phi4.yaml && oc logs -f job/export-phi4
+#
+# Creates on the PVC:
+#   /models/venv                              shared python env
+#   /models/Phi-4-mini-instruct-int8-ov       OpenVINO IR
+#   /models/ov_models/...                     symlink Intel's code expects
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: export-phi4
+  labels: {app: robotics-sdk}
+spec:
+  backoffLimit: 1
+  template:
+    spec:
+      restartPolicy: Never
+      containers:
+      - name: export
+        image: robotics-sdk:latest
+        command: ["bash","-lc"]
+        args:
+          - |
+            set -eux
+            export HOME=/models HF_HOME=/models/hf
+            MD=/models/Phi-4-mini-instruct-int8-ov
+
+            # image ships python3-venv; OpenShift's random UID cannot apt-install at runtime
+            [ -d /models/venv ] || python3 -m venv --system-site-packages /models/venv
+            . /models/venv/bin/activate
+            pip install -q --upgrade pip
+            pip install -q "optimum-intel[openvino]" transformers torch
+
+            [ -d "$MD" ] || optimum-cli export openvino \
+              --model microsoft/Phi-4-mini-instruct \
+              --task text-generation-with-past \
+              --weight-format int8 "$MD"
+
+            # optimum-cli leaves an auto_map pointing at a remote configuration_phi3.py
+            # that it never copies. transformers>=5 has native Phi3, so drop it —
+            # otherwise Intel's trust_remote_code=True fails with a 404-style OSError.
+            python - <<'PX'
+            import json
+            p = "/models/Phi-4-mini-instruct-int8-ov/config.json"
+            c = json.load(open(p))
+            if c.pop("auto_map", None):
+                json.dump(c, open(p, "w"), indent=2)
+                print("stripped auto_map")
+            PX
+
+            # Intel's llm_bridge.py hardcodes ~/ov_models/<name>; HOME=/models here
+            mkdir -p /models/ov_models
+            ln -sfn "$MD" /models/ov_models/Phi-4-mini-instruct-int8-ov
+            du -sh "$MD"
+        resources:
+          requests: {cpu: "2", memory: "12Gi", ephemeral-storage: "4Gi"}
+          limits:   {cpu: "7", memory: "28Gi", ephemeral-storage: "20Gi"}
+        volumeMounts: [{name: m, mountPath: /models}]
+      volumes:
+      - name: m
+        persistentVolumeClaim: {claimName: models}
